@@ -255,4 +255,8 @@ Project ini menunjukkan bahwa backend modern:
 * Menganggap failure sebagai kondisi normal
 * Menggunakan retry dan dead letter mechanism
 
-Project ini dibuat sebagai **latihan berpikir sistem**, bukan sekadar latihan coding.
+Project ini dibuat sebagai **latihan berpikir sistem**.
+
+## License
+
+This project is licensed under the MIT License.
