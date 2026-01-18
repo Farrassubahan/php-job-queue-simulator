@@ -4,16 +4,17 @@ class GenerateReportJob
 {
     public static function handle(array $payload): void
     {
-        echo "Generating report for user {$payload['user_id']}...\n";
+        $rows  = $payload['rows'] ?? 0;
+        $sleep = $payload['sleep'] ?? 3;
 
-        // simulasi proses berat
-        sleep(5);
+        echo "Generating report ({$rows} rows)...\n";
 
-        // simulasi error sesekali
+        sleep($sleep);
+
         if (rand(1, 4) === 1) {
             throw new Exception("Report generation failed");
         }
 
-        echo "Report successfully generated for user {$payload['user_id']}\n";
+        echo "Report successfully generated ({$rows} rows)\n";
     }
 }

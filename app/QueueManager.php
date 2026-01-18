@@ -1,26 +1,36 @@
 <?php
-
 require_once __DIR__ . '/Database.php';
 require_once __DIR__ . '/Job.php';
-
 class QueueManager
 {
-    public static function push(string $type, array $payload, int $maxAttempts = 3): void
-    {
+    public static function push(
+        string $type,
+        array $payload,
+        string $expectedWeight,
+        int $maxAttempts = 3
+    ): void {
         $db = Database::connect();
 
         $stmt = $db->prepare("
-            INSERT INTO jobs (type, payload, status, attempts, max_attempts)
-            VALUES (?, ?, 'pending', 0, ?)
+            INSERT INTO jobs (
+                type,
+                payload,
+                expected_weight,
+                status,
+                attempts,
+                max_attempts,
+                created_at
+            )
+            VALUES (?, ?, ?, 'pending', 0, ?, NOW())
         ");
 
         $stmt->execute([
             $type,
             json_encode($payload),
+            $expectedWeight,
             $maxAttempts
         ]);
     }
-
 
     public static function pop(): ?Job
     {
@@ -44,7 +54,8 @@ class QueueManager
 
         $update = $db->prepare("
             UPDATE jobs
-            SET status = 'processing'
+            SET status = 'processing',
+                started_at = NOW()
             WHERE id = ?
         ");
         $update->execute([$data['id']]);
@@ -54,20 +65,25 @@ class QueueManager
         return new Job($data);
     }
 
-    public static function markSuccess(Job $job): void
+    public static function markSuccess(Job $job, int $executionMs): void
     {
         $db = Database::connect();
 
         $stmt = $db->prepare("
             UPDATE jobs
-            SET status = 'success'
+            SET status = 'success',
+                finished_at = NOW(),
+                execution_ms = ?
             WHERE id = ?
         ");
 
-        $stmt->execute([$job->id]);
+        $stmt->execute([
+            $executionMs,
+            $job->id
+        ]);
     }
 
-    public static function handleFailure(Job $job): void
+    public static function handleFailure(Job $job, int $executionMs): void
     {
         $db = Database::connect();
         $attempts = $job->attempts + 1;
@@ -88,15 +104,19 @@ class QueueManager
 
             $update = $db->prepare("
                 UPDATE jobs
-                SET status = 'dead', attempts = ?
+                SET status = 'dead',
+                    attempts = ?,
+                    finished_at = NOW(),
+                    execution_ms = ?
                 WHERE id = ?
             ");
-            $update->execute([$attempts, $job->id]);
+            $update->execute([$attempts, $executionMs, $job->id]);
         } else {
 
             $update = $db->prepare("
                 UPDATE jobs
-                SET status = 'pending', attempts = ?
+                SET status = 'pending',
+                    attempts = ?
                 WHERE id = ?
             ");
             $update->execute([$attempts, $job->id]);

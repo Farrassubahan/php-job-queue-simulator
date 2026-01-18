@@ -1,262 +1,140 @@
 # Job Queue Simulator (PHP + MySQL)
 
-## Deskripsi Singkat
+## Deskripsi
 
-Job Queue Simulator adalah project backend berbasis **PHP dan MySQL** yang dibuat untuk memahami **alur kerja job queue** di backend, termasuk **background worker**, **retry mechanism**, **failure handling**, dan **dead letter queue**.
+**Job Queue Simulator** adalah project backend berbasis **PHP dan MySQL** untuk mempelajari **alur kerja job queue**, termasuk **background worker**, **retry mechanism**, dan **dead letter queue**.
 
-Project ini **bukan aplikasi untuk end-user**, melainkan **alat belajar dan portofolio backend engineering** untuk memahami bagaimana sistem backend menangani tugas berat tanpa mengganggu request utama.
-
----
-
-## Tujuan Project
-
-Project ini dibuat untuk:
-
-* Memahami konsep **job queue** di backend
-* Mempelajari pemisahan **request utama dan proses berat**
-* Memahami cara kerja **background worker**
-* Melatih **failure handling** dan **retry mechanism**
-* Mensimulasikan **dead letter queue**
-* Menunjukkan **cara berpikir backend engineer**, bukan sekadar CRUD
+Project ini dibuat sebagai **alat belajar dan portofolio backend engineering**, bukan aplikasi end-user.
 
 ---
 
-## Gambaran Umum Sistem
+## Tujuan
 
-Sistem ini memisahkan proses menjadi tiga komponen utama:
+Project ini bertujuan untuk memahami:
 
-1. **Producer** – membuat job dan memasukkannya ke queue
-2. **Queue Manager** – mengatur antrian, status, retry, dan dead letter
+* Konsep **job queue** dan background processing
+* Pemisahan **request utama** dan **proses berat**
+* Cara kerja **worker asynchronous**
+* **Retry mechanism** dan **failure handling**
+* **Dead letter queue** untuk job gagal permanen
+
+---
+
+## Gambaran Sistem
+
+Sistem terdiri dari tiga komponen utama:
+
+1. **Producer** – membuat dan mendaftarkan job
+2. **Queue Manager** – mengelola antrean, status, retry, dan dead job
 3. **Worker** – background process yang mengeksekusi job
 
 ---
 
-## Alur Kerja Sistem (Flow Queue)
+## Alur Kerja Queue
 
 ```
-EVENT (request / sistem)
+producer
    ↓
-producer.php
+QueueManager::push
    ↓
-QueueManager::push()
+jobs (pending)
    ↓
-Database : jobs
+worker (background)
    ↓
-status = pending
+QueueManager::pop (processing)
    ↓
-────────────────────────────────
-(background process berjalan)
-────────────────────────────────
+JobProcessor
    ↓
-worker.php (loop hidup)
-   ↓
-QueueManager::pop()
-   ↓
-Database transaction BEGIN
-   ↓
-SELECT job WHERE status = pending
-   ↓
-LOCK row (FOR UPDATE)
-   ↓
-UPDATE status = processing
-   ↓
-Database transaction COMMIT
-   ↓
-Job object terbentuk
-   ↓
-worker menerima job
-   ↓
-switch (job.type)
-   ↓
-JobProcessor::handle()
-   ↓
-────────────────────────────────
-hasil eksekusi
-────────────────────────────────
-   ↓
-SUCCESS ?
-   ├─ YES
-   │    ↓
-   │  QueueManager::markSuccess()
-   │    ↓
-   │  status = success
-   │
-   └─ NO
-        ↓
-   QueueManager::handleFailure()
-        ↓
-   attempts + 1
-        ↓
-   attempts < max_attempts ?
-        ├─ YES → status = pending (retry)
-        └─ NO  → masuk dead_jobs (dead letter)
+success / retry / dead
 ```
 
 ---
 
-## Struktur Folder Project
+## Struktur Project
 
 ```
 queue-simulator/
-│
 ├── app/
-│   ├── Database.php          
-│   ├── QueueManager.php      
-│   ├── Job.php               
+│   ├── Database.php
+│   ├── QueueManager.php
+│   ├── Job.php
 │   └── JobProcessor/
 │       ├── SendEmailJob.php
 │       └── GenerateReportJob.php
 │
 ├── scripts/
-│   ├── producer.php          
-│   └── worker.php            
+│   ├── producer.php
+│   └── worker.php
 │
 ├── database/
-│   └── schema.sql            
+│   └── schema.sql
 │
 └── README.md
 ```
 
 ---
 
-## Penjelasan Komponen Utama
+## Komponen Utama
 
-### 1. Producer (`producer.php`)
+* **Producer**
+  Membuat job dan memasukkannya ke queue tanpa menjalankan proses berat.
 
-Producer berperan sebagai **simulasi request user atau sistem lain**.
+* **Queue Manager**
+  Mengatur antrean job, status, retry, dan dead letter tanpa logic bisnis.
 
-Tugas utama:
+* **Worker**
+  Background process yang mengeksekusi job dan mencatat hasil eksekusi.
 
-* Membuat job
-* Memasukkan job ke database
-* Tidak menjalankan proses berat
+* **Job Processor**
+  Berisi logic kerja aktual (simulasi job ringan dan berat).
 
-Hal ini memastikan request utama tetap cepat dan responsif.
-
----
-
-### 2. Queue Manager (`QueueManager.php`)
-
-Queue Manager adalah **pusat kendali sistem queue**.
-
-Tanggung jawab:
-
-* Menyimpan job ke queue
-* Mengambil job secara aman (locking)
-* Mengatur perubahan status job
-* Menentukan retry atau dead letter
-
-Queue Manager **tidak menjalankan logic bisnis**.
-
----
-
-### 3. Worker (`worker.php`)
-
-Worker adalah **background process** yang:
-
-* Berjalan terus menerus
-* Mengambil job dari queue
-* Menjalankan job sesuai tipenya
-* Menangani keberhasilan dan kegagalan job
-
-Worker tidak berinteraksi langsung dengan user.
-
----
-
-### 4. Job Processor (`JobProcessor/*`)
-
-Job Processor berisi **logic pekerjaan sebenarnya**.
-
-Contoh:
-
-* `SendEmailJob` → simulasi kirim email
-* `GenerateReportJob` → simulasi proses berat
-
-Logic di sini boleh lama dan boleh gagal tanpa merusak sistem utama.
-
----
-
-### 5. Job Entity (`Job.php`)
-
-`Job.php` berfungsi sebagai **representasi data job**, bukan eksekutor.
-
-Fungsinya:
-
-* Menjaga konsistensi struktur job
-* Memudahkan reasoning sistem
-* Memisahkan data dari proses
+* **Job Entity**
+  Representasi data job untuk menjaga konsistensi dan keterbacaan sistem.
 
 ---
 
 ## Struktur Database
 
-### Tabel `jobs`
+* **jobs**
+  Queue utama (`pending`, `processing`, `success`, `dead`)
 
-Digunakan sebagai **queue utama**.
-
-Kolom penting:
-
-* `status` (`pending`, `processing`, `success`, `dead`)
-* `attempts`
-* `max_attempts`
-
-### Tabel `dead_jobs`
-
-Digunakan sebagai **dead letter queue**, berisi job yang gagal permanen untuk:
-
-* Debugging
-* Audit
-* Evaluasi manual
+* **dead_jobs**
+  Dead letter queue untuk job gagal permanen
 
 ---
 
-## Cara Menjalankan Project
+## Cara Menjalankan
 
-### 1. Import Database
+1. Import database:
 
-Import file `database/schema.sql` menggunakan phpMyAdmin.
+   ```bash
+   database/schema.sql
+   ```
 
-### 2. Enqueue Job
+2. Enqueue job:
 
-Jalankan perintah berikut:
+   ```bash
+   php scripts/producer.php
+   ```
 
-```bash
-php scripts/producer.php
-```
+3. Jalankan worker:
 
-### 3. Jalankan Worker
+   ```bash
+   php scripts/worker.php
+   ```
 
-Di terminal lain:
-
-```bash
-php scripts/worker.php
-```
-
-### 4. Monitoring
-
-Cek tabel `jobs` dan `dead_jobs` di phpMyAdmin untuk melihat perubahan status job.
+4. Monitoring melalui tabel `jobs` dan `dead_jobs`
 
 ---
 
-## Catatan Penting
+## Catatan
 
-* Project ini adalah **simulator pembelajaran**, bukan sistem production
-* Belum memiliki mekanisme recovery untuk job stuck
-* Fokus utama adalah **alur backend dan mindset queue**
+* Project ini adalah **simulator pembelajaran**
+* Tidak ditujukan untuk production
+* Fokus pada **alur dan cara berpikir backend engineer**
 
 ---
-
-## Kesimpulan
-
-Project ini menunjukkan bahwa backend modern:
-
-* Tidak menjalankan tugas berat di request utama
-* Menggunakan queue untuk menjaga stabilitas sistem
-* Menganggap failure sebagai kondisi normal
-* Menggunakan retry dan dead letter mechanism
-
-Project ini dibuat sebagai **latihan berpikir sistem**.
 
 ## License
 
-This project is licensed under the MIT License.
+MIT License
