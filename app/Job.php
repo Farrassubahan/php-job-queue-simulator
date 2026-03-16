@@ -2,31 +2,59 @@
 
 class Job
 {
-    public int $id;
+    public ?int $id = null;
+
     public string $type;
     public array $payload;
-    public string $expectedWeight;
-    public string $status;
-    public int $attempts;
-    public int $maxAttempts;
-    public ?string $startedAt;
-    public ?string $finishedAt;
-    public ?int $executionMs;
 
-    public function __construct(array $data)
+    public string $expectedWeight;
+
+    public string $status = 'pending';
+
+    public int $attempts = 0;
+    public int $maxAttempts = 3;
+
+    public int $priority = 0;
+
+    public ?string $runAt = null;
+
+    public ?string $startedAt = null;
+    public ?string $finishedAt = null;
+
+    public ?int $executionMs = null;
+
+    public function __construct(
+        string $type,
+        array $payload,
+        string $expectedWeight,
+        int $maxAttempts = 3
+    ) {
+        $this->type = $type;
+        $this->payload = $payload;
+        $this->expectedWeight = $expectedWeight;
+        $this->maxAttempts = $maxAttempts;
+    }
+
+    public static function fromDatabase(array $data): self
     {
-        $this->id             = (int) $data['id'];
-        $this->type           = $data['type'];
-        $this->payload        = json_decode($data['payload'], true);
-        $this->expectedWeight = $data['expected_weight'];
-        $this->status         = $data['status'];
-        $this->attempts       = (int) $data['attempts'];
-        $this->maxAttempts    = (int) $data['max_attempts'];
-        $this->startedAt      = $data['started_at'] ?? null;
-        $this->finishedAt     = $data['finished_at'] ?? null;
-        $this->executionMs    = isset($data['execution_ms'])
-            ? (int) $data['execution_ms']
-            : null;
+        $job = new self(
+            $data['type'],
+            json_decode($data['payload'], true),
+            $data['expected_weight'],
+            $data['max_attempts']
+        );
+
+        $job->id = (int) $data['id'];
+        $job->status = $data['status'];
+        $job->attempts = (int) $data['attempts'];
+        $job->priority = (int) ($data['priority'] ?? 0);
+        $job->runAt = $data['run_at'];
+
+        $job->startedAt = $data['started_at'];
+        $job->finishedAt = $data['finished_at'];
+        $job->executionMs = $data['execution_ms'];
+
+        return $job;
     }
 
     public function canRetry(): bool

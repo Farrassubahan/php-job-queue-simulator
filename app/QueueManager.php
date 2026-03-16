@@ -1,51 +1,59 @@
 <?php
+
 require_once __DIR__ . '/Database.php';
 require_once __DIR__ . '/Job.php';
+
 class QueueManager
 {
-    public static function push(
-        string $type,
-        array $payload,
-        string $expectedWeight,
-        int $maxAttempts = 3
-    ): void {
+
+    public static function push(Job $job): void
+    {
         $db = Database::connect();
 
         $stmt = $db->prepare("
-            INSERT INTO jobs (
+            INSERT INTO jobs
+            (
                 type,
                 payload,
                 expected_weight,
+                priority,
                 status,
                 attempts,
                 max_attempts,
-                created_at
+                run_at
             )
-            VALUES (?, ?, ?, 'pending', 0, ?, NOW())
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         ");
 
         $stmt->execute([
-            $type,
-            json_encode($payload),
-            $expectedWeight,
-            $maxAttempts
+            $job->type,
+            json_encode($job->payload),
+            $job->expectedWeight,
+            $job->priority,
+            $job->status,
+            $job->attempts,
+            $job->maxAttempts,
+            $job->runAt
         ]);
     }
 
     public static function pop(): ?Job
     {
         $db = Database::connect();
+
         $db->beginTransaction();
 
         $stmt = $db->query("
-            SELECT * FROM jobs
+            SELECT *
+            FROM jobs
             WHERE status = 'pending'
-            ORDER BY created_at ASC
+            AND (run_at IS NULL OR run_at <= NOW())
+            ORDER BY priority DESC, created_at ASC
             LIMIT 1
             FOR UPDATE
         ");
 
-        $data = $stmt->fetch();
+        $data = $stmt->fetch(PDO::FETCH_ASSOC);
 
         if (!$data) {
             $db->commit();
@@ -58,13 +66,15 @@ class QueueManager
                 started_at = NOW()
             WHERE id = ?
         ");
+
         $update->execute([$data['id']]);
 
         $db->commit();
 
-        return new Job($data);
+        return Job::fromDatabase($data);
     }
 
+ 
     public static function markSuccess(Job $job, int $executionMs): void
     {
         $db = Database::connect();
@@ -83,15 +93,23 @@ class QueueManager
         ]);
     }
 
+
     public static function handleFailure(Job $job, int $executionMs): void
     {
         $db = Database::connect();
+
         $attempts = $job->attempts + 1;
 
         if ($attempts >= $job->maxAttempts) {
 
             $stmt = $db->prepare("
-                INSERT INTO dead_jobs (job_id, type, payload, attempts)
+                INSERT INTO dead_jobs
+                (
+                    job_id,
+                    type,
+                    payload,
+                    attempts
+                )
                 VALUES (?, ?, ?, ?)
             ");
 
@@ -110,7 +128,12 @@ class QueueManager
                     execution_ms = ?
                 WHERE id = ?
             ");
-            $update->execute([$attempts, $executionMs, $job->id]);
+
+            $update->execute([
+                $attempts,
+                $executionMs,
+                $job->id
+            ]);
         } else {
 
             $update = $db->prepare("
@@ -119,7 +142,11 @@ class QueueManager
                     attempts = ?
                 WHERE id = ?
             ");
-            $update->execute([$attempts, $job->id]);
+
+            $update->execute([
+                $attempts,
+                $job->id
+            ]);
         }
     }
 }

@@ -1,9 +1,7 @@
 <?php
 
 require_once __DIR__ . '/../app/QueueManager.php';
-require_once __DIR__ . '/../app/Job.php';
-require_once __DIR__ . '/../app/JobProcessor/SendEmailJob.php';
-require_once __DIR__ . '/../app/JobProcessor/GenerateReportJob.php';
+require_once __DIR__ . '/../app/ProcessorFactory.php';
 
 echo "Worker started...\n";
 
@@ -12,45 +10,35 @@ while (true) {
     $job = QueueManager::pop();
 
     if (!$job) {
+        echo "[IDLE] No job found...\n";
         sleep(2);
         continue;
     }
 
-    echo "Processing job ID {$job->id} ({$job->expectedWeight}) attempt {$job->attempts}\n";
+    echo "[PROCESSING] Job ID {$job->id} | Type: {$job->type}\n";
 
-    $start = microtime(true);
+    $startTime = microtime(true);
 
     try {
 
-        switch ($job->type) {
-            case 'light_task':
-            case 'send_email':
-                SendEmailJob::handle($job->payload);
-                break;
+        $processor = ProcessorFactory::make($job->type);
 
-            case 'heavy_task':
-            case 'generate_report':
-                GenerateReportJob::handle($job->payload);
-                break;
+        $processor->handle($job);
 
-            default:
-                throw new Exception("Unknown job type: {$job->type}");
-        }
+        $executionMs = (int)((microtime(true) - $startTime) * 1000);
 
-        $executionMs = (int) ((microtime(true) - $start) * 1000);
-
-        echo"---------------------------------------------\n";
         QueueManager::markSuccess($job, $executionMs);
-        echo "Job {$job->id} SUCCESS ({$executionMs} ms)\n";
-        echo"=============================================\n";
-        } catch (Exception $e) {
-            
-            $executionMs = (int) ((microtime(true) - $start) * 1000);
-            
-        echo"--------------------------------------------\n";
+
+        echo "[SUCCESS] Job {$job->id} finished in {$executionMs} ms\n";
+        echo "\n";
+    } catch (Exception $e) {
+
+        $executionMs = (int)((microtime(true) - $startTime) * 1000);
+
         QueueManager::handleFailure($job, $executionMs);
-        echo "Job {$job->id} FAILED ({$executionMs} ms): {$e->getMessage()}\n";
-        echo"=============================================\n";
+
+        echo "[FAILED] Job {$job->id} error: " . $e->getMessage() . "\n";
+        echo "\n";
     }
 
     sleep(1);

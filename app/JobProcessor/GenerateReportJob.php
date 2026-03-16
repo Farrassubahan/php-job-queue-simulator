@@ -1,9 +1,13 @@
 <?php
 
+require_once __DIR__ . '/../Job.php';
+
 class GenerateReportJob
 {
-    public static function handle(array $payload): void
+    public function handle(Job $job): void
     {
+        $payload = $job->payload;
+
         $rows  = $payload['rows'] ?? 0;
         $sleep = $payload['sleep'] ?? 3;
 

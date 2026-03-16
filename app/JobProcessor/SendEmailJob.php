@@ -1,9 +1,13 @@
 <?php
 
+require_once __DIR__ . '/../Job.php';
+
 class SendEmailJob
 {
-    public static function handle(array $payload): void
+    public function handle(Job $job): void
     {
+        $payload = $job->payload;
+
         $sleep = $payload['sleep'] ?? 1;
 
         sleep($sleep);
